@@ -41,7 +41,7 @@ export const POST = frames(async (ctx) => {
     const unitPrice:number = await namesContract.read.price() as number;
 
     return NextResponse.json({
-        chainId: "eip155:1", // OP Mainnet 10
+        chainId: "eip155:1", // ethereum Mainnet
         method: "eth_sendTransaction",
         params: {
             abi: abi as Abi,

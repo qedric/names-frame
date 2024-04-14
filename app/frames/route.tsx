@@ -3,8 +3,9 @@ import { Button } from "frames.js/next";
 import { frames } from "./frames";
 import { Abi, createPublicClient, http } from 'viem';
 import { mainnet } from 'viem/chains';
-import names from '../names.json';
-import { getTransaction } from "viem/actions";
+import names from '../data/names.json';
+import data from '../data/data.json';
+import abi from '../data/abi.json';
 
 const client = createPublicClient({
     chain: mainnet,
@@ -20,17 +21,15 @@ const handleRequest = frames(async (ctx) => {
         ...currentState,
         counter: currentState.counter + 1
     };
-
-    const abi: Abi = JSON.parse(process.env.ABI || '[]');
-    const contract_address = process.env.CONTRACT || '';
     
+    const contract_address = data.contract
     const totalMinted = await client.readContract({
         address: `0x${contract_address}`,
         abi: abi,
         functionName: 'totalSupply'
     })
 
-    const checkIfIdIsMinted = async (index: string) => {
+    const alreadyMinted = async (index: string) => {
         return await client.readContract({
             address: `0x${contract_address}`,
             abi: abi,
@@ -39,25 +38,51 @@ const handleRequest = frames(async (ctx) => {
         })
     }
 
-    const getName = async (i: number): Promise<string> => {
-        const name: string | undefined = names[i.toString() as keyof typeof names]
+    // return an available name and id, if a match is found and it is available to mint
+    const getName = async (n: string): Promise<string> => {
 
-        let available: boolean = name !== undefined
-        available = available && (await checkIfIdIsMinted(i.toString()) as boolean == false);
+        const nameRecord = names.find(record => record.name.toLowerCase().trim() == n.toLowerCase().trim());
 
-        // if there's a name and it is not yet minted
-        if (available) {
-            // Update the state
-            updatedState = {
-                ...currentState,
-                counter: i,
-                name: name
-            };
-            return name;
-        } else {
-            let newCount = i + 1;
-            return await getName(newCount);
+        console.log(nameRecord)
+
+        if (nameRecord) {
+            if (!await alreadyMinted(nameRecord.id)) {
+                // Update the state
+                updatedState = {
+                    ...currentState,
+                    counter: parseInt(nameRecord.id),
+                    name: nameRecord.name
+                };
+                return `mint ${nameRecord.name}`;
+            }
         }
+        return `${n} isn't available -- try another or hit the button for a random name`;
+    }
+
+    // return the next available name and id
+    const getNextName = async (i: number): Promise<string> => {
+
+        // if we reach the end of the list just begin again
+        if (i > 366) {
+            i = 1
+        }
+
+        const nameRecord = names.find(record => record.id === i.toString());
+
+        if (nameRecord) {
+            if (!await alreadyMinted(nameRecord.id)) {
+                // Update the state
+                updatedState = {
+                    ...currentState,
+                    counter: parseInt(nameRecord?.id || ''),
+                    name: nameRecord.name
+                };
+                return `mint ${nameRecord.name}`;
+            }
+        }
+
+        let newCount = i + 1;
+        return await getNextName(newCount);
     }
 
     const fetchImageUrl = async (id: number) => {
@@ -105,7 +130,7 @@ const handleRequest = frames(async (ctx) => {
                     view on block explorer
                 </Button>,
                 <Button
-                    action="post"
+                    action="post" 
                 >
                     refresh
                 </Button>
@@ -115,26 +140,42 @@ const handleRequest = frames(async (ctx) => {
 
     return {
         image: (
-            <div tw="flex flex-col">
-                <h4>366 names</h4>
-                <h1>{totalMinted as string}/366 minted</h1>
-                <div tw="flex flex-col">
-                    {ctx.pressedButton
-                        ? `Mint ${await getName(ctx.state.counter + 1)}`
-                        : `Choose a name`}
+            <div tw="bg-rose-200 flex justify-center items-center w-full h-full">
+                <div tw="p-6 bg-purple-900 text-white w-3/4 h-3/4 justify-center items-center flex flex-col">
+                    <h1 tw="mb-0">3 6 6 N A M E S</h1>
+                    <h4 tw="mt-2 text-center">{data.p1}</h4>
+                    <h2>{totalMinted as string}/366 minted</h2>
+                    <div tw="flex flex-col bg-rose-200 text-purple-900 px-12 py-2 rounded-full">
+                        {ctx.pressedButton
+                            ? ctx.message?.inputText
+                                ? `${await getName(ctx.message.inputText)}`
+                                : `mint ${await getNextName(ctx.state.counter + 1)}`
+                            : `choose name`}
+                    </div>
                 </div>
             </div>
         ),
+        imageOptions: {
+            aspectRatio: "1:1",
+        },
         buttons: updatedState.name !== '' ? ([
             <Button action="post">
-                random name
+                choose name
             </Button>,
             <Button action="tx" target="/txdata" post_url="/">
                 {`Mint ${updatedState.name}`}
-            </Button>]) : ([
-                <Button action="post">
-                    random name
-                </Button>]),
+            </Button>,
+            <Button action="link" target="https://opensea.io/collection/366names">
+                view on opensea
+            </Button>
+            ]) : ([
+            <Button action="post">
+                choose name
+            </Button>,
+            <Button action="link" target="https://opensea.io/collection/366names">
+                view on opensea
+            </Button>]),
+        textInput: "Enter a name",
         state: updatedState
     };
 });
