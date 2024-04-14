@@ -1,7 +1,7 @@
 /* eslint-disable react/jsx-key */
 import { Button } from "frames.js/next";
 import { frames } from "./frames";
-import { Abi, createPublicClient, http } from 'viem';
+import { createPublicClient, http } from 'viem';
 import { mainnet } from 'viem/chains';
 import names from '../data/names.json';
 import data from '../data/data.json';
@@ -104,6 +104,7 @@ const handleRequest = frames(async (ctx) => {
         let receipt = null
         let decimalValue = 0
         try {
+            //receipt = await client.waitForTransactionReceipt({hash: txId});
             receipt = await client.waitForTransactionReceipt({hash: ctx.message?.transactionId});
             const topicValue = receipt.logs[0].topics[3]?.toString() || '';
             decimalValue = parseInt(topicValue, 16);
@@ -112,7 +113,7 @@ const handleRequest = frames(async (ctx) => {
         }
         
         return {
-            image: !receipt ? (
+            image: receipt ? (
                 await fetchImageUrl(decimalValue)
             ) : (
                 <div tw="p-5 bg-purple-800 text-white w-full h-full justify-center items-center flex">
@@ -149,7 +150,7 @@ const handleRequest = frames(async (ctx) => {
                         {ctx.pressedButton
                             ? ctx.message?.inputText
                                 ? `${await getName(ctx.message.inputText)}`
-                                : `mint ${await getNextName(ctx.state.counter + 1)}`
+                                : `${await getNextName(ctx.state.counter + 1)}`
                             : `choose name`}
                     </div>
                 </div>
@@ -163,7 +164,7 @@ const handleRequest = frames(async (ctx) => {
                 choose name
             </Button>,
             <Button action="tx" target="/txdata" post_url="/">
-                {`Mint ${updatedState.name}`}
+                {`mint ${updatedState.name}`}
             </Button>,
             <Button action="link" target="https://opensea.io/collection/366names">
                 view on opensea
@@ -175,7 +176,7 @@ const handleRequest = frames(async (ctx) => {
             <Button action="link" target="https://opensea.io/collection/366names">
                 view on opensea
             </Button>]),
-        textInput: "Enter a name",
+        textInput: "enter a name",
         state: updatedState
     };
 });
