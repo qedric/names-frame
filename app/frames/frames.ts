@@ -7,7 +7,8 @@ export type State = {
 export const frames = createFrames({
   basePath: "/frames",
   initialState: {
-    counter: 1,
-    name: ''
+    counter: 0,
+    name: '',
+    txId: ''
   },
 });

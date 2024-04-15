@@ -1,37 +1,26 @@
 /* eslint-disable react/jsx-key */
-import { Button } from "frames.js/next";
-import { frames } from "./frames";
-import { createPublicClient, http } from 'viem';
-import { mainnet } from 'viem/chains';
-import names from '../data/names.json';
-import data from '../data/data.json';
-import abi from '../data/abi.json';
+import { Button } from "frames.js/next"
+import { frames } from "./frames"
+import { createPublicClient, http } from 'viem'
+import { mainnet } from 'viem/chains'
+import names from '../data/names.json'
+import data from '../data/data.json'
+import abi from '../data/abi.json'
+import { Hash } from "crypto"
 
 const client = createPublicClient({
     chain: mainnet,
     transport: http(),
-});
+})
 
 const handleRequest = frames(async (ctx) => {
 
-    const currentState = ctx.state;
-
-    // Update the state
-    let updatedState = {
-        ...currentState,
-        counter: currentState.counter + 1
-    };
-    
-    const contract_address = data.contract
-    const totalMinted = await client.readContract({
-        address: `0x${contract_address}`,
-        abi: abi,
-        functionName: 'totalSupply'
-    })
+    // initialise the variable to hold our working state, set to the intial state
+    let updatedState = ctx.state
 
     const alreadyMinted = async (index: string) => {
         return await client.readContract({
-            address: `0x${contract_address}`,
+            address: `0x${data.contract}`,
             abi: abi,
             functionName: 'minted_ids',
             args: [index]
@@ -41,22 +30,20 @@ const handleRequest = frames(async (ctx) => {
     // return an available name and id, if a match is found and it is available to mint
     const getName = async (n: string): Promise<string> => {
 
-        const nameRecord = names.find(record => record.name.toLowerCase().trim() == n.toLowerCase().trim());
-
-        console.log(nameRecord)
+        const nameRecord = names.find(record => record.name.toLowerCase().trim() == n.toLowerCase().trim())
 
         if (nameRecord) {
             if (!await alreadyMinted(nameRecord.id)) {
                 // Update the state
                 updatedState = {
-                    ...currentState,
+                    ...ctx.state,
                     counter: parseInt(nameRecord.id),
                     name: nameRecord.name
-                };
-                return `mint ${nameRecord.name}`;
+                }
+                return `mint ${nameRecord.name}`
             }
         }
-        return `${n} isn't available -- try another or hit the button for a random name`;
+        return `${n} isn't available -- try another or hit the button for a random name`
     }
 
     // return the next available name and id
@@ -67,47 +54,60 @@ const handleRequest = frames(async (ctx) => {
             i = 1
         }
 
-        const nameRecord = names.find(record => record.id === i.toString());
+        const nameRecord = names.find(record => record.id === i.toString())
 
         if (nameRecord) {
             if (!await alreadyMinted(nameRecord.id)) {
                 // Update the state
                 updatedState = {
-                    ...currentState,
+                    ...ctx.state,
                     counter: parseInt(nameRecord?.id || ''),
                     name: nameRecord.name
-                };
-                return `mint ${nameRecord.name}`;
+                }
+                return `mint ${nameRecord.name}`
             }
         }
 
-        let newCount = i + 1;
-        return await getNextName(newCount);
+        let newCount = i + 1
+        return await getNextName(newCount)
     }
 
     const fetchImageUrl = async (id: number) => {
         const ipfs_link: string = await client.readContract({
-            address: `0x${contract_address}`,
+            address: `0x${data.contract}`,
             abi: abi,
             functionName: 'tokenURI',
             args: [id]
         }) as string
         // get the image value from the metadata resolved by the ipfs link
-        const metadata = await fetch(ipfs_link.replace("ipfs://", "https://ipfs.io/ipfs/") as string);
-        const json = await metadata.json();
+        const metadata = await fetch(ipfs_link.replace("ipfs://", "https://ipfs.io/ipfs/") as string)
+        const json = await metadata.json()
         //console.log(json)
-        return json.image.replace("ipfs://", "https://ipfs.io/ipfs/");
+        return json.image.replace("ipfs://", "https://ipfs.io/ipfs/")
     }
 
-    //const txId = '0xbeb86073e6ede684d19f35e7a0fe2df42335ab1fb4581580e8ed4bc6899e7446'
-    if (ctx.message?.transactionId) {
+    let txId = ctx.message?.transactionId
+        ? ctx.message.transactionId 
+        : ctx.searchParams.tx
+            ? ctx.searchParams.tx
+            : '' // assign a valid tx here for testing, or empty string for prod
+    if (txId) {
         let receipt = null
         let decimalValue = 0
         try {
-            //receipt = await client.waitForTransactionReceipt({hash: txId});
-            receipt = await client.waitForTransactionReceipt({hash: ctx.message?.transactionId});
-            const topicValue = receipt.logs[0].topics[3]?.toString() || '';
-            decimalValue = parseInt(topicValue, 16);
+            // frames have 5 second timeout, so set a race to skip the wait before the timeout
+            receipt = await Promise.race([
+                client.waitForTransactionReceipt({ hash: txId as `0x${string}`}),
+                //client.waitForTransactionReceipt({ hash: ctx.message?.transactionId }),
+                new Promise((resolve) => setTimeout(resolve, 3200))
+            ])
+
+            // if we have a receipt, get the NFT token id from the logs
+            if (receipt){
+                const topicValue = (receipt as { logs: any[] }).logs[0].topics[3].toString() || ''
+                decimalValue = parseInt(topicValue, 16)
+            }
+            
         } catch (error) {
             // do nothing if an error occurs, user can click refresh to try again
         }
@@ -123,7 +123,7 @@ const handleRequest = frames(async (ctx) => {
             imageOptions: {
                 aspectRatio: "1:1",
             },
-            buttons: [
+            buttons: receipt ? [
                 <Button
                     action="link"
                     target={`https://etherscan.io/tx/${ctx.message?.transactionId}`}
@@ -131,13 +131,26 @@ const handleRequest = frames(async (ctx) => {
                     view on block explorer
                 </Button>,
                 <Button
-                    action="post" 
+                    action="post"
+                >
+                    mint another
+                </Button>
+            ] : [
+                <Button
+                    action="post"
+                    target={{ query: { tx: txId }, pathname: "/" }}
                 >
                     refresh
                 </Button>
             ],
         }
     }
+
+    const totalMinted = await client.readContract({
+        address: `0x${data.contract}`,
+        abi: abi,
+        functionName: 'totalSupply'
+    })
 
     return {
         image: (
@@ -178,8 +191,8 @@ const handleRequest = frames(async (ctx) => {
             </Button>]),
         textInput: "enter a name",
         state: updatedState
-    };
-});
+    }
+})
 
-export const GET = handleRequest;
-export const POST = handleRequest;
+export const GET = handleRequest
+export const POST = handleRequest
