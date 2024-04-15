@@ -159,7 +159,7 @@ const handleRequest = frames(async (ctx) => {
                     <h1 tw="mb-0">3 6 6 N A M E S</h1>
                     <h4 tw="mt-2 text-center">{data.p1}</h4>
                     <h2>{totalMinted as string}/366 minted</h2>
-                    <div tw="flex flex-col bg-rose-200 text-purple-900 px-12 py-2 rounded-full">
+                    <div tw="flex flex-col bg-rose-200 text-purple-900 px-12 py-2 rounded-full text-center">
                         {ctx.pressedButton
                             ? ctx.message?.inputText
                                 ? `${await getName(ctx.message.inputText)}`
